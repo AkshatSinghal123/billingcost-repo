@@ -42,7 +42,7 @@ jobs:
     - name: Convert CF to TF
       run: |
         mkdir tf-conversion
-        cf2tf templates/cost-sim-template.yaml --output-dir tf-conversion
+        cf2tf templates/cost-sim-template.yaml --output tf-conversion
 
     - name: Generate cost estimate
       run: |
