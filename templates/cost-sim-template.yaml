@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS cost simulation template excluding Lambda and RDS, cf2tf-compatible
+
+Parameters: {}
+
+Resources:
+
+  # S3 Bucket
+  MyS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-bucket
+
+  # VPC
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-vpc
+
+  # Subnet
+  MySubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-subnet
+
+  # Security Group
+  MySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH & HTTP
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  # IAM Role for EC2
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # EC2 Instance
+  MyEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-002f6e91abff6eb96 # Amazon Linux 2
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroupIds:
+        - !Ref MySecurityGroup
+      SubnetId: !Ref MySubnet
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ec2
+
+  # SNS Topic
+  MySNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: CostSimSNSTopic
+
+  # API Gateway
+  MyAPI:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: CostSimAPI
+      Description: API Gateway used for pricing simulation
+
+Outputs:
+  S3BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref MyS3Bucket
+
+  EC2InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref MyEC2
+
+  SNSTopicARN:
+    Description: SNS Topic ARN
+    Value: !Ref MySNSTopic
+
+  APIGatewayID:
+    Description: API Gateway ID
+    Value: !Ref MyAPI
