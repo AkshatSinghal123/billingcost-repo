@@ -1,2 +1,2 @@
-cf2tf==1.0.3
+cf2tf
 requests>=2.28.0
