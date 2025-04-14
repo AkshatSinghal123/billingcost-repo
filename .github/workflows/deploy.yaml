@@ -32,10 +32,13 @@ jobs:
     - name: Install cf2tf
       run: pip install cf2tf
 
-    - name: Setup Infracost
-      uses: infracost/actions/setup@v2
-      with:
-        api-key: ${{ secrets.INFRACOST_API_KEY }}
+    - name: Install Infracost
+      run: |
+        curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+        echo "$HOME/.infracost/bin" >> $GITHUB_PATH
+
+    - name: Configure Infracost
+      run: infracost configure set api_key ${{ secrets.INFRACOST_API_KEY }}
 
     - name: Convert CF to TF
       run: |
@@ -51,10 +54,9 @@ jobs:
 
     - name: Post Infracost comment
       if: github.event_name == 'pull_request'
-      uses: infracost/actions/comment@v2
+      uses: marocchino/sticky-pull-request-comment@v2
       with:
         path: infracost-report.txt
-        behavior: update
 
   deploy:
     needs: cost-analysis
