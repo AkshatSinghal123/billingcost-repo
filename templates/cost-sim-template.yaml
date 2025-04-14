@@ -5,7 +5,7 @@ Parameters: {}
 
 Resources:
 
-  # S3 Bucket
+  # S3 Bucket dw
   MyS3Bucket:
     Type: AWS::S3::Bucket
     Properties:
