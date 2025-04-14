@@ -3,7 +3,13 @@ name: CFN + Infracost CI/CD
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'templates/**'
+      - '.github/workflows/**'
   pull_request:
+    paths:
+      - 'templates/**'
+      - '.github/workflows/**'
 
 permissions:
   id-token: write
@@ -11,53 +17,60 @@ permissions:
   pull-requests: write
 
 jobs:
-  deploy:
+  cost-analysis:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout
       uses: actions/checkout@v3
 
-    - name: Configure AWS Credentials (OIDC)
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install cf2tf
+      run: pip install cf2tf
+
+    - name: Setup Infracost
+      uses: infracost/actions/setup@v2
+      with:
+        api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+    - name: Convert CF to TF
+      run: |
+        mkdir -p tf-conversion
+        cf2tf templates/cost-sim-template.yaml --output tf-conversion
+
+    - name: Generate Infracost estimate
+      run: |
+        infracost breakdown \
+          --path tf-conversion \
+          --format table \
+          --out-file infracost-report.txt
+
+    - name: Post Infracost comment
+      if: github.event_name == 'pull_request'
+      uses: infracost/actions/comment@v2
+      with:
+        path: infracost-report.txt
+        behavior: update
+
+  deploy:
+    needs: cost-analysis
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
         aws-region: ap-south-1
 
-    - name: Setup Python for cf2tf
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-
-    - name: Install cf2tf
-      run: pip install cf2tf
-
-    - name: Install Infracost
-      run: |
-        curl -sSfL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
-        echo "$HOME/.infracost/bin" >> $GITHUB_PATH
-
-    - name: Configure Infracost
-      run: infracost configure set api_key ${{ secrets.INFRACOST_API_KEY }}
-
-    - name: Convert CF to TF
-      run: |
-        mkdir tf-conversion
-        cf2tf templates/cost-sim-template.yaml --output tf-conversion
-
-    - name: Generate cost estimate
-      run: |
-        infracost breakdown --path tf-conversion --format table --out-file infracost-report.txt
-        cat infracost-report.txt
-
-    - name: Upload cost report to PR
-      if: github.event_name == 'pull_request'
-      uses: marocchino/sticky-pull-request-comment@v2
-      with:
-        path: infracost-report.txt
-
-    - name: Deploy CloudFormation template
-      if: github.ref == 'refs/heads/main'
+    - name: Deploy CloudFormation
       run: |
         aws cloudformation deploy \
           --template-file templates/cost-sim-template.yaml \
